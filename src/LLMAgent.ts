@@ -1,5 +1,5 @@
 /**
- * LLMAgent.ts - LLM Service Simulation with Structured Outputs
+ * LLMAgent.ts - LLM Service Simulation for Resume Screening
  *
  * This module demonstrates the complete flow of:
  * 1. Converting a Zod schema to JSON Schema for LLM consumption
@@ -18,10 +18,12 @@
 import { z, ZodError } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
-  ComplianceReviewSchema,
-  ComplianceReview,
-  exampleComplianceReview
+  ResumeScreeningSchema,
+  ResumeScreening
 } from './SGRSchema.js';
+import { simulationConfig } from './config.js';
+import { Resume, formatResumeAsText } from './examples/resumes.js';
+import { JobDescription } from './examples/jobDescriptions.js';
 
 /**
  * Converts a Zod schema to JSON Schema format
@@ -48,19 +50,6 @@ export function zodToJsonSchemaString<T extends z.ZodType>(
   return JSON.stringify(jsonSchema, null, 2);
 }
 
-/**
- * LLMRequestPayload - Simulates what would be sent to an LLM API
- *
- * In real implementations (e.g., OpenAI), this would map to:
- * - messages: array of conversation messages
- * - response_format: { type: "json_schema", json_schema: { ... } }
- * - strict: true (enables Constrained Decoding)
- */
-interface LLMRequestPayload {
-  prompt: string;
-  jsonSchema: string;
-  strict: boolean;
-}
 
 /**
  * LLMResponse - Simulated API response structure
@@ -77,13 +66,257 @@ interface LLMResponse {
 // Simulation state to toggle between success and failure scenarios
 let simulationCallCount = 0;
 
+// Store the candidate type for generating appropriate responses
+type CandidateType = 'strong_match' | 'potential_fit' | 'not_qualified';
+let currentCandidateType: CandidateType = 'strong_match';
+
+/**
+ * Set the candidate type for simulation
+ * This affects what kind of response is generated
+ */
+export function setCandidateType(type: CandidateType): void {
+  currentCandidateType = type;
+}
+
+/**
+ * Generate a simulated resume screening result based on candidate type
+ */
+function generateScreeningResult(candidateId: string, jobId: string): ResumeScreening {
+  switch (currentCandidateType) {
+    case 'strong_match':
+      return {
+        candidate_id: candidateId,
+        job_id: jobId,
+        overall_fit: 'strong_match',
+        screening_steps: [
+          {
+            step_number: 1,
+            evaluation_category: 'technical_skills',
+            requirement_met: true,
+            evidence: 'Candidate has 7 years of TypeScript and Python experience, with AWS and Kubernetes certifications. Led microservices migration at TechCorp.'
+          },
+          {
+            step_number: 2,
+            evaluation_category: 'experience_level',
+            requirement_met: true,
+            evidence: 'Total of 7 years professional experience, including 3 years as Senior Engineer with team leadership responsibilities. Exceeds the 5+ years requirement.'
+          },
+          {
+            step_number: 3,
+            evaluation_category: 'education',
+            requirement_met: true,
+            evidence: 'B.S. Computer Science from UC Berkeley (GPA 3.7), meeting the degree requirement.'
+          }
+        ],
+        skills_analysis: {
+          technical_skills: [
+            { skill_name: 'TypeScript', proficiency_level: 'expert', years_experience: 5, evidence_source: 'Used across all three positions' },
+            { skill_name: 'Python', proficiency_level: 'advanced', years_experience: 7, evidence_source: 'Built data pipeline at StartupXYZ' },
+            { skill_name: 'AWS', proficiency_level: 'advanced', years_experience: 4, evidence_source: 'AWS Solutions Architect certification' },
+            { skill_name: 'Kubernetes', proficiency_level: 'advanced', years_experience: 3, evidence_source: 'CKA certified' }
+          ],
+          soft_skills: ['Leadership', 'Mentorship', 'Technical Communication'],
+          certifications: ['AWS Solutions Architect Professional', 'CKA'],
+          required_skills_matched: ['TypeScript', 'Python', 'AWS', 'Distributed Systems', 'Cloud Platforms'],
+          missing_required_skills: []
+        },
+        experience_analysis: {
+          total_years: 7,
+          relevant_years: 7,
+          experience_level: 'senior',
+          career_progression: 'ascending',
+          work_history: [
+            {
+              company: 'TechCorp Inc.',
+              role: 'Senior Software Engineer',
+              duration_months: 36,
+              relevance: 'highly_relevant',
+              key_achievements: ['Led microservices migration', 'Mentored 3 engineers'],
+              skills_demonstrated: ['TypeScript', 'Kubernetes', 'Leadership']
+            }
+          ]
+        },
+        education_analysis: {
+          highest_degree: 'bachelor',
+          education_history: [
+            { institution: 'UC Berkeley', degree: 'B.S. Computer Science', field_of_study: 'Computer Science', graduation_year: 2016, relevance: 'highly_relevant' }
+          ],
+          meets_education_requirement: true
+        },
+        fit_score: 92,
+        strengths: [
+          'Exceeds experience requirement with 7 years in relevant roles',
+          'Has all required technical skills plus preferred Kubernetes experience',
+          'Proven leadership and mentorship track record'
+        ],
+        concerns: [],
+        recommended_action: 'advance_to_interview',
+        interview_focus_areas: ['Architecture decisions', 'Team leadership style', 'Career goals']
+      };
+
+    case 'potential_fit':
+      return {
+        candidate_id: candidateId,
+        job_id: jobId,
+        overall_fit: 'potential_fit',
+        screening_steps: [
+          {
+            step_number: 1,
+            evaluation_category: 'technical_skills',
+            requirement_met: false,
+            evidence: 'Candidate has Python and JavaScript/TypeScript skills from bootcamp and data analyst role. Built full-stack projects but lacks production experience.',
+            gap_identified: 'No production experience with distributed systems or cloud platforms'
+          },
+          {
+            step_number: 2,
+            evaluation_category: 'experience_level',
+            requirement_met: false,
+            evidence: 'Total 4 years professional experience, but only in data analyst roles. Software development experience limited to bootcamp projects.',
+            gap_identified: 'Does not meet 5+ years software development requirement'
+          },
+          {
+            step_number: 3,
+            evaluation_category: 'education',
+            requirement_met: false,
+            evidence: 'B.A. Economics plus bootcamp certificate. No formal CS education.',
+            gap_identified: 'Does not have CS degree, though bootcamp provides relevant training'
+          }
+        ],
+        skills_analysis: {
+          technical_skills: [
+            { skill_name: 'Python', proficiency_level: 'intermediate', years_experience: 2, evidence_source: 'Automation scripts at Analytics Co.' },
+            { skill_name: 'JavaScript', proficiency_level: 'intermediate', years_experience: 1, evidence_source: 'Bootcamp projects' },
+            { skill_name: 'React', proficiency_level: 'beginner', years_experience: 1, evidence_source: 'E-commerce portfolio project' },
+            { skill_name: 'SQL', proficiency_level: 'advanced', years_experience: 4, evidence_source: 'Daily use as data analyst' }
+          ],
+          soft_skills: ['Analytical Thinking', 'Problem Solving', 'Cross-team Collaboration'],
+          certifications: [],
+          required_skills_matched: ['Python', 'TypeScript/JavaScript'],
+          missing_required_skills: ['Cloud Platforms', 'Distributed Systems']
+        },
+        experience_analysis: {
+          total_years: 4,
+          relevant_years: 1,
+          experience_level: 'entry',
+          career_progression: 'mixed',
+          work_history: [
+            {
+              company: 'Analytics Co.',
+              role: 'Senior Data Analyst',
+              duration_months: 42,
+              relevance: 'somewhat_relevant',
+              key_achievements: ['Built Python automation', 'Created SQL dashboards'],
+              skills_demonstrated: ['Python', 'SQL', 'Data Analysis']
+            }
+          ]
+        },
+        education_analysis: {
+          highest_degree: 'bachelor',
+          education_history: [
+            { institution: 'State University', degree: 'B.A. Economics', field_of_study: 'Economics', graduation_year: 2018, relevance: 'not_relevant' },
+            { institution: 'CodeCamp Bootcamp', degree: 'Certificate', field_of_study: 'Full Stack Development', graduation_year: 2023, relevance: 'highly_relevant' }
+          ],
+          meets_education_requirement: false
+        },
+        fit_score: 45,
+        strengths: [
+          'Strong analytical background from data analyst experience',
+          'Self-motivated learner who completed bootcamp while working',
+          'Has working knowledge of core technologies'
+        ],
+        concerns: [
+          'Lacks production software engineering experience',
+          'No cloud or distributed systems experience',
+          'May need significant ramp-up time'
+        ],
+        recommended_action: 'phone_screen_first',
+        interview_focus_areas: ['Transferable skills', 'Learning velocity', 'Technical project deep-dive']
+      };
+
+    case 'not_qualified':
+    default:
+      return {
+        candidate_id: candidateId,
+        job_id: jobId,
+        overall_fit: 'not_qualified',
+        screening_steps: [
+          {
+            step_number: 1,
+            evaluation_category: 'technical_skills',
+            requirement_met: false,
+            evidence: 'Candidate lists only HTML, CSS, and basic JavaScript. No experience with required technologies (TypeScript, Python, cloud platforms).',
+            gap_identified: 'Missing all required technical skills for senior role'
+          },
+          {
+            step_number: 2,
+            evaluation_category: 'experience_level',
+            requirement_met: false,
+            evidence: 'Only 9 months of student worker experience in IT help desk. No professional software development experience.',
+            gap_identified: 'Requires 5+ years experience, candidate has less than 1 year in non-engineering role'
+          },
+          {
+            step_number: 3,
+            evaluation_category: 'education',
+            requirement_met: false,
+            evidence: 'A.S. General Studies from Community College. No CS education or relevant technical certifications.',
+            gap_identified: 'Does not meet education requirement'
+          }
+        ],
+        skills_analysis: {
+          technical_skills: [
+            { skill_name: 'HTML', proficiency_level: 'beginner', evidence_source: 'Personal portfolio' },
+            { skill_name: 'CSS', proficiency_level: 'beginner', evidence_source: 'Personal portfolio' },
+            { skill_name: 'JavaScript', proficiency_level: 'beginner', evidence_source: 'Listed as "basic"' }
+          ],
+          soft_skills: ['Customer Service', 'Communication'],
+          certifications: [],
+          required_skills_matched: [],
+          missing_required_skills: ['TypeScript', 'Python', 'Cloud Platforms', 'Distributed Systems']
+        },
+        experience_analysis: {
+          total_years: 0.75,
+          relevant_years: 0,
+          experience_level: 'entry',
+          career_progression: 'early_career',
+          work_history: [
+            {
+              company: 'Campus IT Help Desk',
+              role: 'Student Worker',
+              duration_months: 9,
+              relevance: 'not_relevant',
+              key_achievements: ['Technical support', 'Documentation'],
+              skills_demonstrated: ['Customer Service', 'Troubleshooting']
+            }
+          ]
+        },
+        education_analysis: {
+          highest_degree: 'associate',
+          education_history: [
+            { institution: 'Community College', degree: 'A.S. General Studies', field_of_study: 'General Studies', graduation_year: 2023, relevance: 'not_relevant' }
+          ],
+          meets_education_requirement: false
+        },
+        fit_score: 15,
+        strengths: [
+          'Shows enthusiasm and eagerness to learn'
+        ],
+        concerns: [
+          'No professional software development experience',
+          'Missing all required technical skills',
+          'Education does not meet requirements',
+          'This is a senior role requiring 5+ years experience'
+        ],
+        recommended_action: 'reject',
+        interview_focus_areas: []
+      };
+  }
+}
+
 /**
  * simulateLLMCall - Mock LLM API call
  *
  * This function simulates the behavior of an LLM API with Structured Outputs.
- * It alternates between:
- * - Success: Returns valid JSON matching ComplianceReviewSchema
- * - Failure: Returns malformed data (for testing validation)
+ * It can return valid or malformed responses for testing.
  *
  * In production, this would be replaced with actual SDK calls:
  * ```typescript
@@ -92,95 +325,66 @@ let simulationCallCount = 0;
  *   messages: [{ role: "user", content: prompt }],
  *   response_format: {
  *     type: "json_schema",
- *     json_schema: { name: "compliance_review", schema: jsonSchema, strict: true }
+ *     json_schema: { name: "resume_screening", schema: jsonSchema, strict: true }
  *   }
  * });
  * ```
- *
- * @param schema - JSON Schema string defining expected output structure
- * @param prompt - User prompt for the LLM
- * @param forceFailure - If true, always return malformed data
- * @returns Simulated LLM response
  */
 export function simulateLLMCall(
   schema: string,
   prompt: string,
+  candidateId: string,
+  jobId: string,
   forceFailure: boolean = false
 ): LLMResponse {
   simulationCallCount++;
 
   console.log('[LLM Simulation] Request received');
-  console.log(`[LLM Simulation] Prompt: "${prompt.substring(0, 50)}..."`);
+  console.log(`[LLM Simulation] Prompt length: ${prompt.length} chars`);
   console.log(`[LLM Simulation] Schema provided: ${schema.length} chars`);
-  console.log(`[LLM Simulation] Call count: ${simulationCallCount}`);
+  console.log(`[LLM Simulation] Candidate type: ${currentCandidateType}`);
 
-  // Simulate failure on even calls or when forced
-  const shouldFail = forceFailure || (simulationCallCount % 2 === 0);
-
-  if (shouldFail) {
+  if (forceFailure) {
     console.log('[LLM Simulation] Returning MALFORMED response (for testing)');
 
     // Return malformed data - missing required fields, wrong types
     const malformedResponse = {
-      document_id: 'DOC-FAIL-001',
-      preliminary_finding: 'invalid_status', // Invalid enum value
-      reasoning_steps: [
+      candidate_id: candidateId,
+      job_id: jobId,
+      overall_fit: 'maybe_qualified', // Invalid enum value
+      screening_steps: [
         {
           step_number: 'one', // Wrong type: string instead of number
-          focus_area: 'Test',
-          intermediate_conclusion: 'This will fail validation'
+          evaluation_category: 'skills', // Invalid category
+          requirement_met: 'yes', // Wrong type
+          evidence: 'Short' // Too short
         }
       ],
-      final_risk_score: 15, // Out of range (max is 10)
-      // action_required is missing entirely
+      fit_score: 150, // Out of range (max is 100)
+      // Missing many required fields
     };
 
     return {
       success: true, // API call "succeeded" but data is malformed
       rawContent: JSON.stringify(malformedResponse),
       metadata: {
-        model: 'simulated-model-v1',
-        tokensUsed: 150
+        model: simulationConfig.modelVersion,
+        tokensUsed: simulationConfig.tokenCounts.failure
       }
     };
   }
 
   console.log('[LLM Simulation] Returning VALID response');
 
-  // Return valid data matching the schema
-  const validResponse: ComplianceReview = {
-    document_id: `DOC-${Date.now()}`,
-    preliminary_finding: 'needs_revision',
-    reasoning_steps: [
-      {
-        step_number: 1,
-        focus_area: 'Regulatory Compliance',
-        intermediate_conclusion: 'Document references outdated regulations from 2019'
-      },
-      {
-        step_number: 2,
-        focus_area: 'Data Handling Procedures',
-        intermediate_conclusion: 'Data retention policy meets current GDPR requirements'
-      },
-      {
-        step_number: 3,
-        focus_area: 'Access Control Documentation',
-        intermediate_conclusion: 'Role-based access control properly documented'
-      }
-    ],
-    final_risk_score: 4,
-    action_required: [
-      'Update regulatory references to 2024 standards',
-      'Schedule follow-up review in 6 months'
-    ]
-  };
+  // Generate appropriate response based on candidate type
+  const validResponse = generateScreeningResult(candidateId, jobId);
 
   return {
     success: true,
     rawContent: JSON.stringify(validResponse),
     metadata: {
-      model: 'simulated-model-v1',
-      tokensUsed: 280
+      model: simulationConfig.modelVersion,
+      tokensUsed: simulationConfig.tokenCounts.success
     }
   };
 }
@@ -191,6 +395,7 @@ export function simulateLLMCall(
  */
 export function resetSimulationState(): void {
   simulationCallCount = 0;
+  currentCandidateType = 'strong_match';
 }
 
 /**
@@ -198,7 +403,7 @@ export function resetSimulationState(): void {
  */
 export interface LLMAgentResult {
   success: boolean;
-  data?: ComplianceReview;
+  data?: ResumeScreening;
   error?: {
     type: 'parse_error' | 'validation_error';
     message: string;
@@ -208,9 +413,9 @@ export interface LLMAgentResult {
 }
 
 /**
- * runComplianceReview - Main agent function
+ * runResumeScreening - Main agent function
  *
- * This is the primary interface for running a compliance review.
+ * This is the primary interface for running a resume screening.
  * It demonstrates the full Structured Outputs workflow:
  *
  * 1. Generate JSON Schema from Zod definition
@@ -218,48 +423,69 @@ export interface LLMAgentResult {
  * 3. Parse and validate response
  * 4. Return typed result or detailed error
  *
- * @param documentContent - Content to analyze
+ * @param resume - Candidate resume to analyze
+ * @param job - Job description to match against
  * @param forceFailure - For testing: force malformed response
- * @returns Validated ComplianceReview or error details
+ * @returns Validated ResumeScreening or error details
  */
-export async function runComplianceReview(
-  documentContent: string,
+export async function runResumeScreening(
+  resume: Resume,
+  job: JobDescription,
   forceFailure: boolean = false
 ): Promise<LLMAgentResult> {
   // Step 1: Convert Zod schema to JSON Schema string
   // This is what gets sent to the LLM API for Constrained Decoding
   const jsonSchemaString = zodToJsonSchemaString(
-    ComplianceReviewSchema,
-    'ComplianceReview'
+    ResumeScreeningSchema,
+    'ResumeScreening'
   );
 
   console.log('\n=== JSON Schema Generated for LLM ===');
-  console.log(jsonSchemaString);
+  console.log(jsonSchemaString.substring(0, 500) + '...\n[truncated]');
   console.log('=====================================\n');
 
-  // Step 2: Construct prompt with SGR instructions
-  // The prompt explains the schema structure to guide the model
+  // Step 2: Format resume and job for the prompt
+  const resumeText = formatResumeAsText(resume);
+  const jobRequirements = [
+    'Required:',
+    ...job.requirements.required.map(r => `  - ${r}`),
+    'Preferred:',
+    ...job.requirements.preferred.map(r => `  - ${r}`)
+  ].join('\n');
+
+  // Step 3: Construct prompt with SGR instructions
   const prompt = `
-You are a compliance review assistant. Analyze the following document
-and provide a structured compliance review.
+You are an expert HR recruiter screening resumes. Analyze the following resume
+against the job requirements and provide a structured screening assessment.
 
 IMPORTANT: Your response MUST follow the Schema-Guided Reasoning process:
-1. Start with a preliminary finding (compliant/needs_revision/non_compliant)
-2. Work through AT LEAST 2 reasoning steps, each examining a different aspect
-3. Assign a risk score from 1-10 based on your analysis
-4. List specific actions required
+1. Evaluate technical skills against requirements
+2. Assess experience level and relevance
+3. Review education background
+4. Provide an overall fit assessment with evidence
+5. Recommend a specific next action
 
-Document to analyze:
----
-${documentContent}
----
+## Job: ${job.title}
+${job.description}
 
-Provide your analysis as a JSON object matching the required schema.
+## Requirements:
+${jobRequirements}
+
+## Resume:
+${resumeText}
+
+---
+Provide your screening analysis as a JSON object matching the required schema.
 `;
 
-  // Step 3: Call simulated LLM with schema enforcement
-  // In production: This would use OpenAI/Anthropic SDK with strict=true
-  const llmResponse = simulateLLMCall(jsonSchemaString, prompt, forceFailure);
+  // Step 4: Call simulated LLM with schema enforcement
+  const llmResponse = simulateLLMCall(
+    jsonSchemaString,
+    prompt,
+    resume.candidateId,
+    job.jobId,
+    forceFailure
+  );
 
   if (!llmResponse.success) {
     return {
@@ -272,7 +498,7 @@ Provide your analysis as a JSON object matching the required schema.
     };
   }
 
-  // Step 4: Parse JSON from raw response
+  // Step 5: Parse JSON from raw response
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(llmResponse.rawContent);
@@ -287,17 +513,13 @@ Provide your analysis as a JSON object matching the required schema.
     };
   }
 
-  // Step 5: Validate against Zod schema
+  // Step 6: Validate against Zod schema
   // This is the critical validation step that catches any schema violations
   // With true Constrained Decoding (strict=true), this should never fail
-  // But it's essential for:
-  // - APIs without strict mode
-  // - Defense in depth
-  // - Catching edge cases
   try {
-    const validatedData = ComplianceReviewSchema.parse(parsedJson);
+    const validatedData = ResumeScreeningSchema.parse(parsedJson);
 
-    console.log('[Validation] SUCCESS - Data matches ComplianceReviewSchema');
+    console.log('[Validation] SUCCESS - Data matches ResumeScreeningSchema');
 
     return {
       success: true,
@@ -333,8 +555,8 @@ export function demonstrateSchemaGeneration(): void {
   console.log('\n=== Schema-Guided Reasoning: Schema Generation Demo ===\n');
 
   const jsonSchema = zodToJsonSchemaString(
-    ComplianceReviewSchema,
-    'ComplianceReview'
+    ResumeScreeningSchema,
+    'ResumeScreening'
   );
 
   console.log('The following JSON Schema is generated from the Zod definition:');
@@ -342,10 +564,11 @@ export function demonstrateSchemaGeneration(): void {
   console.log(jsonSchema);
 
   console.log('\n=== How This Enables SGR ===');
-  console.log('1. The schema REQUIRES reasoning_steps array (min 2 items)');
-  console.log('2. Each step MUST have step_number, focus_area, intermediate_conclusion');
-  console.log('3. This forces the LLM to "show its work" step by step');
-  console.log('4. The preliminary_finding enum prevents vague assessments');
-  console.log('5. The risk_score constraints (1-10) ensure quantifiable output');
+  console.log('1. The schema REQUIRES screening_steps array (min 3 items)');
+  console.log('2. Each step MUST evaluate a specific category with evidence');
+  console.log('3. This forces the LLM to systematically review the resume');
+  console.log('4. The overall_fit enum prevents vague assessments');
+  console.log('5. The fit_score constraint (0-100) ensures quantifiable output');
+  console.log('6. recommended_action enum enforces clear next steps');
   console.log('============================================\n');
 }

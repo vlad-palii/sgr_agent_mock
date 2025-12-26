@@ -1,153 +1,447 @@
 /**
- * SGRSchema.ts - Schema-Guided Reasoning (SGR) Schema Definition
+ * SGRSchema.ts - Schema-Guided Reasoning (SGR) for Resume Screening
  *
- * This module defines the core Zod schemas that enforce structured reasoning
- * during LLM inference. The ComplianceReviewSchema acts as a "mandatory checklist"
- * that the LLM must follow, ensuring:
+ * This module defines Zod schemas that enforce structured reasoning during
+ * LLM-powered resume screening. The ResumeScreeningSchema acts as a
+ * "mandatory checklist" that forces the LLM to:
  *
- * 1. Predictable output structure (100% valid JSON)
- * 2. Enforced logical flow through reasoning_steps array
- * 3. Auditable decision trail for compliance/debugging
- * 4. Type-safe data contracts between LLM and application code
+ * 1. Evaluate each screening criterion systematically
+ * 2. Provide evidence for conclusions from the resume
+ * 3. Generate structured, validated output
+ * 4. Make auditable hiring recommendations
  *
- * Key SGR Concept: By defining a complex, nested schema with required fields,
- * we force the LLM to "think through" each step rather than jumping to conclusions.
- * This is Schema-Guided Reasoning - the schema itself becomes the reasoning scaffold.
+ * Key SGR Concept: The schema itself becomes the reasoning scaffold.
+ * By requiring specific fields (skills analysis, experience breakdown,
+ * screening steps), we prevent the LLM from making snap judgments.
  */
 
 import { z } from 'zod';
+import { scoringConfig, schemaConfig, enums } from './config.js';
+
+// ============================================================================
+// Enums - Constrained Output Categories
+// ============================================================================
 
 /**
- * PreliminaryFinding - Enum constraint for initial assessment
+ * CandidateFitEnum - Overall assessment of candidate fit
  *
  * Using z.enum() ensures the LLM can only output one of these exact values.
- * This is Constrained Decoding in action - invalid values are impossible.
+ * This is Constrained Decoding - invalid values are impossible.
  */
-export const PreliminaryFindingEnum = z.enum([
-  'compliant',
-  'needs_revision',
-  'non_compliant'
-]);
-
-export type PreliminaryFinding = z.infer<typeof PreliminaryFindingEnum>;
+export const CandidateFitEnum = z.enum(enums.candidateFit);
+export type CandidateFit = z.infer<typeof CandidateFitEnum>;
 
 /**
- * ReasoningStep - Individual step in the SGR checklist
- *
- * Each reasoning step forces the LLM to:
- * 1. Identify what aspect it's analyzing (focus_area)
- * 2. Provide an intermediate conclusion for that specific area
- *
- * This creates an auditable trail and prevents "reasoning shortcuts"
- * where the model might skip important considerations.
+ * ProficiencyLevelEnum - Skill proficiency levels
  */
-export const ReasoningStepSchema = z.object({
-  // Step number enforces sequential thinking
+export const ProficiencyLevelEnum = z.enum(enums.proficiencyLevels);
+export type ProficiencyLevel = z.infer<typeof ProficiencyLevelEnum>;
+
+/**
+ * RecommendedActionEnum - Next steps for the candidate
+ */
+export const RecommendedActionEnum = z.enum(enums.recommendedActions);
+export type RecommendedAction = z.infer<typeof RecommendedActionEnum>;
+
+/**
+ * EvaluationCategoryEnum - Categories for screening steps
+ */
+export const EvaluationCategoryEnum = z.enum(enums.evaluationCategories);
+export type EvaluationCategory = z.infer<typeof EvaluationCategoryEnum>;
+
+/**
+ * RelevanceEnum - How relevant experience/education is to the role
+ */
+export const RelevanceEnum = z.enum(enums.relevanceTypes);
+export type Relevance = z.infer<typeof RelevanceEnum>;
+
+/**
+ * DegreeTypeEnum - Education level types
+ */
+export const DegreeTypeEnum = z.enum(enums.degreeTypes);
+export type DegreeType = z.infer<typeof DegreeTypeEnum>;
+
+// ============================================================================
+// Screening Step Schema - The Heart of SGR
+// ============================================================================
+
+/**
+ * ScreeningStepSchema - Individual step in the screening process
+ *
+ * Each step forces the LLM to:
+ * 1. Focus on a specific evaluation category
+ * 2. Determine if the requirement is met
+ * 3. Provide evidence from the resume
+ * 4. Identify any gaps
+ *
+ * This creates an auditable trail and prevents "reasoning shortcuts".
+ */
+export const ScreeningStepSchema = z.object({
   step_number: z.number()
     .int()
     .min(1)
-    .describe('Sequential step number in the reasoning process'),
+    .describe('Sequential step number in the screening process'),
 
-  // Focus area ensures comprehensive coverage
-  focus_area: z.string()
-    .min(1)
-    .describe('Specific aspect being analyzed in this step (e.g., "Data Privacy", "Financial Disclosure")'),
+  evaluation_category: EvaluationCategoryEnum
+    .describe('The specific category being evaluated in this step'),
 
-  // Intermediate conclusion captures step-by-step reasoning
-  intermediate_conclusion: z.string()
-    .min(1)
-    .describe('Conclusion reached for this specific focus area')
+  requirement_met: z.boolean()
+    .describe('Whether the candidate meets the requirement for this category'),
+
+  evidence: z.string()
+    .min(schemaConfig.minEvidenceLength)
+    .describe('Specific evidence from the resume supporting this conclusion'),
+
+  gap_identified: z.string()
+    .optional()
+    .describe('If requirement not met, what gap was identified')
 });
 
-export type ReasoningStep = z.infer<typeof ReasoningStepSchema>;
+export type ScreeningStep = z.infer<typeof ScreeningStepSchema>;
+
+// ============================================================================
+// Skills Analysis Schema
+// ============================================================================
 
 /**
- * ComplianceReviewSchema - Main SGR Schema
+ * ExtractedSkillSchema - A skill identified from the resume
+ */
+export const ExtractedSkillSchema = z.object({
+  skill_name: z.string()
+    .min(schemaConfig.minSkillNameLength)
+    .describe('Name of the skill'),
+
+  proficiency_level: ProficiencyLevelEnum
+    .describe('Estimated proficiency based on resume evidence'),
+
+  years_experience: z.number()
+    .min(0)
+    .optional()
+    .describe('Estimated years of experience with this skill'),
+
+  evidence_source: z.string()
+    .describe('Where in the resume this skill was demonstrated')
+});
+
+export type ExtractedSkill = z.infer<typeof ExtractedSkillSchema>;
+
+/**
+ * SkillsAnalysisSchema - Comprehensive skills breakdown
+ */
+export const SkillsAnalysisSchema = z.object({
+  technical_skills: z.array(ExtractedSkillSchema)
+    .describe('Technical/hard skills identified'),
+
+  soft_skills: z.array(z.string().min(1))
+    .describe('Soft skills identified (leadership, communication, etc.)'),
+
+  certifications: z.array(z.string())
+    .describe('Professional certifications held'),
+
+  required_skills_matched: z.array(z.string())
+    .describe('Which required skills from the job posting were found'),
+
+  missing_required_skills: z.array(z.string())
+    .describe('Required skills from job posting NOT found in resume')
+});
+
+export type SkillsAnalysis = z.infer<typeof SkillsAnalysisSchema>;
+
+// ============================================================================
+// Experience Analysis Schema
+// ============================================================================
+
+/**
+ * WorkExperienceSchema - A single work experience entry
+ */
+export const WorkExperienceAnalysisSchema = z.object({
+  company: z.string()
+    .describe('Company name'),
+
+  role: z.string()
+    .describe('Job title/role'),
+
+  duration_months: z.number()
+    .int()
+    .min(0)
+    .describe('Duration in months'),
+
+  relevance: RelevanceEnum
+    .describe('How relevant this experience is to the target role'),
+
+  key_achievements: z.array(z.string())
+    .describe('Notable achievements in this role'),
+
+  skills_demonstrated: z.array(z.string())
+    .describe('Skills demonstrated in this role')
+});
+
+export type WorkExperienceAnalysis = z.infer<typeof WorkExperienceAnalysisSchema>;
+
+/**
+ * ExperienceAnalysisSchema - Overall experience summary
+ */
+export const ExperienceAnalysisSchema = z.object({
+  total_years: z.number()
+    .min(0)
+    .describe('Total years of professional experience'),
+
+  relevant_years: z.number()
+    .min(0)
+    .describe('Years of experience relevant to this role'),
+
+  experience_level: z.enum(['entry', 'mid', 'senior', 'lead', 'executive'])
+    .describe('Overall experience level assessment'),
+
+  career_progression: z.enum(['ascending', 'lateral', 'mixed', 'early_career'])
+    .describe('Pattern of career growth'),
+
+  work_history: z.array(WorkExperienceAnalysisSchema)
+    .describe('Analysis of each work experience entry')
+});
+
+export type ExperienceAnalysis = z.infer<typeof ExperienceAnalysisSchema>;
+
+// ============================================================================
+// Education Analysis Schema
+// ============================================================================
+
+/**
+ * EducationEntrySchema - A single education entry
+ */
+export const EducationEntrySchema = z.object({
+  institution: z.string()
+    .describe('Name of educational institution'),
+
+  degree: z.string()
+    .describe('Degree or certification earned'),
+
+  field_of_study: z.string()
+    .describe('Major or field of study'),
+
+  graduation_year: z.number()
+    .int()
+    .optional()
+    .describe('Year of graduation'),
+
+  relevance: RelevanceEnum
+    .describe('How relevant this education is to the role')
+});
+
+export type EducationEntry = z.infer<typeof EducationEntrySchema>;
+
+/**
+ * EducationAnalysisSchema - Overall education summary
+ */
+export const EducationAnalysisSchema = z.object({
+  highest_degree: DegreeTypeEnum
+    .describe('Highest level of education completed'),
+
+  education_history: z.array(EducationEntrySchema)
+    .describe('All education entries'),
+
+  meets_education_requirement: z.boolean()
+    .describe('Whether candidate meets the education requirements for the role')
+});
+
+export type EducationAnalysis = z.infer<typeof EducationAnalysisSchema>;
+
+// ============================================================================
+// Main Resume Screening Schema - The Complete SGR Structure
+// ============================================================================
+
+/**
+ * ResumeScreeningSchema - Main SGR Schema for Resume Analysis
  *
  * This is the core Schema-Guided Reasoning structure. When sent to an LLM
  * with Structured Outputs enabled (strict=true), the model MUST produce
- * output that conforms exactly to this schema.
+ * output conforming exactly to this schema.
  *
- * The complexity of this schema (nested arrays, enums, numeric constraints)
- * demonstrates that Constrained Decoding can handle real-world production
- * requirements, not just simple key-value pairs.
+ * The complexity demonstrates that Constrained Decoding can handle
+ * real-world production requirements with nested structures.
  */
-export const ComplianceReviewSchema = z.object({
-  // Unique identifier for the document being reviewed
-  document_id: z.string()
+export const ResumeScreeningSchema = z.object({
+  // Identifiers
+  candidate_id: z.string()
     .min(1)
-    .describe('Unique identifier for the document under review'),
+    .describe('Unique identifier for the candidate'),
 
-  // High-level initial assessment - constrained to enum values
-  preliminary_finding: PreliminaryFindingEnum
-    .describe('Initial compliance assessment before detailed analysis'),
+  job_id: z.string()
+    .min(1)
+    .describe('Unique identifier for the job posting'),
+
+  // High-level assessment - constrained to enum values
+  overall_fit: CandidateFitEnum
+    .describe('Overall assessment of candidate fit for the role'),
 
   /**
-   * reasoning_steps - The Heart of SGR
+   * screening_steps - The Heart of SGR
    *
    * This array is what makes this Schema-Guided Reasoning:
-   * - Forces the LLM to break down analysis into discrete steps
-   * - Each step must have a focus and conclusion
+   * - Forces LLM to evaluate each criterion systematically
+   * - Each step requires evidence from the resume
    * - Creates an auditable reasoning trail
-   * - Prevents the model from skipping directly to a conclusion
-   *
-   * Minimum 2 steps ensures non-trivial analysis.
+   * - Prevents jumping to conclusions
    */
-  reasoning_steps: z.array(ReasoningStepSchema)
-    .min(2)
-    .describe('Mandatory reasoning steps - each step represents a distinct analysis phase'),
+  screening_steps: z.array(ScreeningStepSchema)
+    .min(schemaConfig.minScreeningSteps)
+    .describe('Mandatory screening steps - each evaluates a different criterion'),
+
+  // Detailed analyses
+  skills_analysis: SkillsAnalysisSchema
+    .describe('Comprehensive breakdown of candidate skills'),
+
+  experience_analysis: ExperienceAnalysisSchema
+    .describe('Analysis of work experience'),
+
+  education_analysis: EducationAnalysisSchema
+    .describe('Analysis of educational background'),
 
   /**
-   * final_risk_score - Numeric constraint demonstration
+   * fit_score - Numeric constraint demonstration
    *
-   * The min(1) and max(10) constraints prove that Structured Outputs
-   * can enforce numeric ranges, not just string patterns.
-   * The LLM literally cannot output 0 or 11.
+   * The min/max constraints prove that Structured Outputs
+   * can enforce numeric ranges. The LLM cannot output
+   * values outside 0-100.
    */
-  final_risk_score: z.number()
-    .min(1)
-    .max(10)
-    .describe('Risk score from 1 (minimal risk) to 10 (critical risk)'),
+  fit_score: z.number()
+    .min(scoringConfig.fitScore.min)
+    .max(scoringConfig.fitScore.max)
+    .describe('Candidate fit score from 0 (no fit) to 100 (perfect fit)'),
 
-  // Actionable outputs from the analysis
-  action_required: z.array(z.string().min(1))
-    .describe('List of required actions based on the compliance review')
+  // Key findings
+  strengths: z.array(z.string().min(1))
+    .min(schemaConfig.minStrengths)
+    .describe('Key strengths of the candidate'),
+
+  concerns: z.array(z.string())
+    .describe('Potential concerns or gaps to address'),
+
+  // Actionable outputs
+  recommended_action: RecommendedActionEnum
+    .describe('Recommended next action for this candidate'),
+
+  interview_focus_areas: z.array(z.string())
+    .describe('Suggested areas to explore if candidate advances to interview')
 });
 
-export type ComplianceReview = z.infer<typeof ComplianceReviewSchema>;
+export type ResumeScreening = z.infer<typeof ResumeScreeningSchema>;
+
+// ============================================================================
+// Example Data - Valid ResumeScreening Object
+// ============================================================================
 
 /**
- * Example of a valid ComplianceReview object
+ * Example of a valid ResumeScreening object for a strong match candidate
  *
  * This demonstrates the expected structure and can be used for:
  * - Documentation
  * - Test fixtures
  * - LLM few-shot examples
  */
-export const exampleComplianceReview: ComplianceReview = {
-  document_id: 'DOC-2024-001',
-  preliminary_finding: 'needs_revision',
-  reasoning_steps: [
+export const exampleResumeScreening: ResumeScreening = {
+  candidate_id: 'CAND-001',
+  job_id: 'JOB-2024-001',
+  overall_fit: 'strong_match',
+
+  screening_steps: [
     {
       step_number: 1,
-      focus_area: 'Data Privacy Compliance',
-      intermediate_conclusion: 'Missing explicit user consent clause for data processing'
+      evaluation_category: 'technical_skills',
+      requirement_met: true,
+      evidence: 'Candidate has 7 years of TypeScript and Python experience, with AWS and Kubernetes certifications. Led microservices migration at TechCorp.'
     },
     {
       step_number: 2,
-      focus_area: 'Financial Disclosure',
-      intermediate_conclusion: 'All required financial metrics properly disclosed'
+      evaluation_category: 'experience_level',
+      requirement_met: true,
+      evidence: 'Total of 7 years professional experience, including 3 years as Senior Engineer with team leadership responsibilities.'
     },
     {
       step_number: 3,
-      focus_area: 'Regulatory References',
-      intermediate_conclusion: 'GDPR Article 6 citation needed for lawful basis'
+      evaluation_category: 'education',
+      requirement_met: true,
+      evidence: 'B.S. Computer Science from UC Berkeley (GPA 3.7), meeting the degree requirement.'
     }
   ],
-  final_risk_score: 6,
-  action_required: [
-    'Add explicit consent clause to Section 3.2',
-    'Include GDPR Article 6 reference',
-    'Submit for secondary legal review'
+
+  skills_analysis: {
+    technical_skills: [
+      {
+        skill_name: 'TypeScript',
+        proficiency_level: 'expert',
+        years_experience: 5,
+        evidence_source: 'Used across all three positions, led TypeScript migration at TechCorp'
+      },
+      {
+        skill_name: 'Python',
+        proficiency_level: 'advanced',
+        years_experience: 7,
+        evidence_source: 'Built data pipeline processing 10TB monthly at StartupXYZ'
+      },
+      {
+        skill_name: 'Kubernetes',
+        proficiency_level: 'advanced',
+        years_experience: 3,
+        evidence_source: 'CKA certified, used for microservices deployment at TechCorp'
+      }
+    ],
+    soft_skills: ['Leadership', 'Mentorship', 'Technical Communication'],
+    certifications: ['AWS Solutions Architect Professional', 'CKA'],
+    required_skills_matched: ['TypeScript', 'Python', 'AWS', 'Distributed Systems'],
+    missing_required_skills: []
+  },
+
+  experience_analysis: {
+    total_years: 7,
+    relevant_years: 7,
+    experience_level: 'senior',
+    career_progression: 'ascending',
+    work_history: [
+      {
+        company: 'TechCorp Inc.',
+        role: 'Senior Software Engineer',
+        duration_months: 36,
+        relevance: 'highly_relevant',
+        key_achievements: [
+          'Led microservices migration serving 2M+ users',
+          'Mentored 3 junior engineers to promotion'
+        ],
+        skills_demonstrated: ['TypeScript', 'Kubernetes', 'System Design', 'Leadership']
+      }
+    ]
+  },
+
+  education_analysis: {
+    highest_degree: 'bachelor',
+    education_history: [
+      {
+        institution: 'University of California, Berkeley',
+        degree: 'B.S. Computer Science',
+        field_of_study: 'Computer Science',
+        graduation_year: 2016,
+        relevance: 'highly_relevant'
+      }
+    ],
+    meets_education_requirement: true
+  },
+
+  fit_score: 92,
+
+  strengths: [
+    'Exceeds experience requirement with 7 years in relevant roles',
+    'Has all required technical skills plus preferred Kubernetes experience',
+    'Proven leadership and mentorship track record',
+    'Strong career progression with measurable achievements'
+  ],
+
+  concerns: [],
+
+  recommended_action: 'advance_to_interview',
+
+  interview_focus_areas: [
+    'Deep dive on microservices architecture decisions',
+    'Team leadership philosophy and conflict resolution',
+    'Long-term career goals and interest in the role'
   ]
 };
