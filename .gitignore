@@ -1,0 +1,32 @@
+# Node dependencies
+node_modules/
+dist/
+build/
+*.log
+
+# TypeScript files
+*.tsbuildinfo
+
+# Build outputs
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+
+# Miscellaneous
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test output
+coverage/
+*.test.js
+*.spec.js
+
+# IDE settings
+.vscode/
+.idea/
+CLAUDE.md
