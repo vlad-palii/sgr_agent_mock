@@ -1,13 +1,14 @@
 /**
- * LLMAgent.ts - LLM Service Simulation for Resume Screening
+ * LLMAgent.ts - LLM Service for Resume Screening
  *
  * This module demonstrates the complete flow of:
  * 1. Converting a Zod schema to JSON Schema for LLM consumption
- * 2. Simulating LLM API calls with structured output enforcement
+ * 2. Calling OpenAI API with structured output enforcement
  * 3. Validating and parsing LLM responses back to typed objects
  *
- * In production, this would integrate with OpenAI/Anthropic/Gemini SDKs
- * that support the `response_format: { type: "json_schema", ... }` parameter.
+ * Supports both:
+ * - Real OpenAI API calls with Structured Outputs (strict=true)
+ * - Simulated responses for testing without API costs
  *
  * Key Concept: Constrained Decoding
  * When strict=true is set, the LLM's token generation is constrained
@@ -17,13 +18,39 @@
 
 import { z, ZodError } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import OpenAI from 'openai';
 import {
   ResumeScreeningSchema,
   ResumeScreening
 } from './SGRSchema.js';
-import { simulationConfig } from './config.js';
+import { simulationConfig, openaiConfig, modelConfig } from './config.js';
 import { Resume, formatResumeAsText } from './examples/resumes.js';
 import { JobDescription } from './examples/jobDescriptions.js';
+
+// ============================================================================
+// OpenAI Client Setup
+// ============================================================================
+
+let openaiClient: OpenAI | null = null;
+
+/**
+ * Get or create the OpenAI client
+ */
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    if (!openaiConfig.apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY environment variable is not set. ' +
+        'Set it with: export OPENAI_API_KEY=your-api-key'
+      );
+    }
+    openaiClient = new OpenAI({
+      apiKey: openaiConfig.apiKey,
+      baseURL: openaiConfig.baseURL
+    });
+  }
+  return openaiClient;
+}
 
 /**
  * Converts a Zod schema to JSON Schema format
@@ -389,6 +416,102 @@ export function simulateLLMCall(
   };
 }
 
+// ============================================================================
+// Real OpenAI API Call
+// ============================================================================
+
+/**
+ * callOpenAIWithStructuredOutput - Real OpenAI API call with Structured Outputs
+ *
+ * This function calls the actual OpenAI API with:
+ * - response_format: { type: "json_schema", ... }
+ * - strict: true (enables Constrained Decoding)
+ *
+ * The LLM is guaranteed to return valid JSON matching our schema.
+ */
+export async function callOpenAIWithStructuredOutput(
+  prompt: string
+): Promise<LLMResponse> {
+  console.log('[OpenAI API] Making real API call...');
+  console.log(`[OpenAI API] Model: ${modelConfig.primaryModel}`);
+  console.log(`[OpenAI API] Prompt length: ${prompt.length} chars`);
+
+  try {
+    const client = getOpenAIClient();
+
+    // Build the JSON schema for Structured Outputs
+    const jsonSchema = zodToJsonSchema(ResumeScreeningSchema, {
+      name: 'ResumeScreening',
+      errorMessages: true
+    });
+
+    const response = await client.chat.completions.create({
+      model: modelConfig.primaryModel,
+      max_tokens: modelConfig.maxTokens,
+      temperature: modelConfig.temperature,
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert HR recruiter screening resumes. You must analyze resumes against job requirements and provide structured screening assessments.
+
+Your response MUST follow Schema-Guided Reasoning:
+1. Evaluate technical skills against requirements (with specific evidence)
+2. Assess experience level and relevance (with specific evidence)
+3. Review education background (with specific evidence)
+4. Identify at least 3 screening steps with detailed evidence from the resume
+5. Provide an overall fit assessment
+6. Recommend a specific next action
+
+Be thorough and cite specific details from the resume as evidence.`
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'ResumeScreening',
+          strict: true,
+          schema: jsonSchema
+        }
+      }
+    });
+
+    const content = response.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('No content in OpenAI response');
+    }
+
+    console.log('[OpenAI API] Response received successfully');
+    console.log(`[OpenAI API] Tokens used: ${response.usage?.total_tokens || 'unknown'}`);
+
+    return {
+      success: true,
+      rawContent: content,
+      metadata: {
+        model: response.model,
+        tokensUsed: response.usage?.total_tokens || 0
+      }
+    };
+  } catch (error) {
+    console.error('[OpenAI API] Error:', error);
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    return {
+      success: false,
+      rawContent: JSON.stringify({ error: errorMessage }),
+      metadata: {
+        model: modelConfig.primaryModel,
+        tokensUsed: 0
+      }
+    };
+  }
+}
+
 /**
  * Reset the simulation call counter
  * Useful for testing to ensure predictable behavior
@@ -419,13 +542,13 @@ export interface LLMAgentResult {
  * It demonstrates the full Structured Outputs workflow:
  *
  * 1. Generate JSON Schema from Zod definition
- * 2. Call LLM with schema constraint
+ * 2. Call LLM with schema constraint (real API or simulation)
  * 3. Parse and validate response
  * 4. Return typed result or detailed error
  *
  * @param resume - Candidate resume to analyze
  * @param job - Job description to match against
- * @param forceFailure - For testing: force malformed response
+ * @param forceFailure - For testing: force malformed response (simulation only)
  * @returns Validated ResumeScreening or error details
  */
 export async function runResumeScreening(
@@ -434,15 +557,16 @@ export async function runResumeScreening(
   forceFailure: boolean = false
 ): Promise<LLMAgentResult> {
   // Step 1: Convert Zod schema to JSON Schema string
-  // This is what gets sent to the LLM API for Constrained Decoding
   const jsonSchemaString = zodToJsonSchemaString(
     ResumeScreeningSchema,
     'ResumeScreening'
   );
 
-  console.log('\n=== JSON Schema Generated for LLM ===');
-  console.log(jsonSchemaString.substring(0, 500) + '...\n[truncated]');
-  console.log('=====================================\n');
+  if (!openaiConfig.useRealAPI) {
+    console.log('\n=== JSON Schema Generated for LLM ===');
+    console.log(jsonSchemaString.substring(0, 500) + '...\n[truncated]');
+    console.log('=====================================\n');
+  }
 
   // Step 2: Format resume and job for the prompt
   const resumeText = formatResumeAsText(resume);
@@ -455,15 +579,7 @@ export async function runResumeScreening(
 
   // Step 3: Construct prompt with SGR instructions
   const prompt = `
-You are an expert HR recruiter screening resumes. Analyze the following resume
-against the job requirements and provide a structured screening assessment.
-
-IMPORTANT: Your response MUST follow the Schema-Guided Reasoning process:
-1. Evaluate technical skills against requirements
-2. Assess experience level and relevance
-3. Review education background
-4. Provide an overall fit assessment with evidence
-5. Recommend a specific next action
+Analyze the following resume against the job requirements.
 
 ## Job: ${job.title}
 ${job.description}
@@ -475,17 +591,32 @@ ${jobRequirements}
 ${resumeText}
 
 ---
-Provide your screening analysis as a JSON object matching the required schema.
+Candidate ID: ${resume.candidateId}
+Job ID: ${job.jobId}
+
+Provide your screening analysis as a JSON object. Be thorough and cite specific evidence from the resume.
 `;
 
-  // Step 4: Call simulated LLM with schema enforcement
-  const llmResponse = simulateLLMCall(
-    jsonSchemaString,
-    prompt,
-    resume.candidateId,
-    job.jobId,
-    forceFailure
-  );
+  // Step 4: Call LLM (real API or simulation)
+  let llmResponse: LLMResponse;
+
+  if (openaiConfig.useRealAPI && !forceFailure) {
+    // Use real OpenAI API
+    console.log('\n=== Using Real OpenAI API ===\n');
+    llmResponse = await callOpenAIWithStructuredOutput(prompt);
+  } else {
+    // Use simulation
+    if (openaiConfig.useRealAPI) {
+      console.log('\n=== Simulation mode (forceFailure=true) ===\n');
+    }
+    llmResponse = simulateLLMCall(
+      jsonSchemaString,
+      prompt,
+      resume.candidateId,
+      job.jobId,
+      forceFailure
+    );
+  }
 
   if (!llmResponse.success) {
     return {

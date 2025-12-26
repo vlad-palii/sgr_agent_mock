@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "dev:real": "USE_REAL_API=true tsx src/testRealAPI.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -27,6 +28,7 @@
     "vitest": "^1.2.0"
   },
   "dependencies": {
+    "openai": "^6.15.0",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.22.0"
   }

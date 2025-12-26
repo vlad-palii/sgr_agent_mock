@@ -5,6 +5,22 @@
  */
 
 // ============================================================================
+// OpenAI Configuration
+// ============================================================================
+
+export const openaiConfig = {
+  // API key loaded from environment variable
+  apiKey: process.env.OPENAI_API_KEY || '',
+
+  // Whether to use real API or simulation
+  // Set to true to use real OpenAI API, false for simulation
+  useRealAPI: process.env.USE_REAL_API === 'true',
+
+  // Base URL (optional, for proxies or Azure OpenAI)
+  baseURL: process.env.OPENAI_BASE_URL || undefined
+} as const;
+
+// ============================================================================
 // Model Configuration
 // ============================================================================
 
