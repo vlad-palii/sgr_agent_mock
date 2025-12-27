@@ -8,7 +8,6 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "dev:real": "USE_REAL_API=true tsx src/testRealAPI.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -1,17 +1,11 @@
 /**
- * ReliabilityTest.test.ts - Testing and Evaluation for Resume Screening
+ * ReliabilityTest.test.ts - Schema Validation Tests for Resume Screening
  *
- * This module demonstrates production-grade testing patterns for LLM applications
- * that use Structured Outputs and Schema-Guided Reasoning.
- *
- * Key Testing Concepts:
- * 1. Validation Testing - Ensure Zod schemas catch malformed LLM output
- * 2. Schema Conformance - Verify all SGR steps are present and valid
- * 3. Evals Framework - Production evaluation patterns (e.g., promptfoo)
- * 4. Retry Logic - How to handle and recover from validation failures
+ * These tests validate the Zod schemas used for structured LLM output.
+ * They run without requiring an API key or real LLM calls.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { ZodError } from 'zod';
 import {
   ResumeScreeningSchema,
@@ -21,25 +15,18 @@ import {
   ExtractedSkillSchema
 } from './SGRSchema.js';
 import {
-  runResumeScreening,
-  resetSimulationState,
-  setCandidateType
-} from './LLMAgent.js';
-import {
   executeAgentFlow,
   UpdateATSArgsSchema,
   FlagForReviewArgsSchema
 } from './AgentFlow.js';
-import { strongMatchCandidate, potentialFitCandidate } from './examples/resumes.js';
-import { defaultJob } from './examples/jobDescriptions.js';
 
 // ============================================================
-// VALIDATION TESTS - Core Zod Schema Testing
+// SCHEMA VALIDATION TESTS
 // ============================================================
 
 describe('ResumeScreeningSchema Validation', () => {
   /**
-   * Test 1: Valid data passes validation
+   * Test: Valid data passes validation
    */
   it('should accept valid resume screening data', () => {
     const validData: ResumeScreening = {
@@ -83,7 +70,7 @@ describe('ResumeScreeningSchema Validation', () => {
   });
 
   /**
-   * Test 2: Invalid enum value throws ZodError
+   * Test: Invalid enum value throws ZodError
    */
   it('should reject invalid overall_fit enum value', () => {
     const invalidData = {
@@ -91,9 +78,9 @@ describe('ResumeScreeningSchema Validation', () => {
       job_id: 'JOB-001',
       overall_fit: 'maybe_qualified', // Invalid enum value
       screening_steps: [
-        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has skills' },
-        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: 'Has experience' },
-        { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'Has degree' }
+        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has skills', gap_identified: null },
+        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: 'Has experience', gap_identified: null },
+        { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'Has degree', gap_identified: null }
       ],
       skills_analysis: { technical_skills: [], soft_skills: [], certifications: [], required_skills_matched: [], missing_required_skills: [] },
       experience_analysis: { total_years: 5, relevant_years: 5, experience_level: 'senior', career_progression: 'ascending', work_history: [] },
@@ -109,7 +96,7 @@ describe('ResumeScreeningSchema Validation', () => {
   });
 
   /**
-   * Test 3: Out-of-range fit score is rejected
+   * Test: Out-of-range fit score is rejected
    */
   it('should reject fit score outside valid range (0-100)', () => {
     const invalidData = {
@@ -117,9 +104,9 @@ describe('ResumeScreeningSchema Validation', () => {
       job_id: 'JOB-001',
       overall_fit: 'strong_match',
       screening_steps: [
-        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has skills' },
-        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: 'Has experience' },
-        { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'Has degree' }
+        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has skills', gap_identified: null },
+        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: 'Has experience', gap_identified: null },
+        { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'Has degree', gap_identified: null }
       ],
       skills_analysis: { technical_skills: [], soft_skills: [], certifications: [], required_skills_matched: [], missing_required_skills: [] },
       experience_analysis: { total_years: 5, relevant_years: 5, experience_level: 'senior', career_progression: 'ascending', work_history: [] },
@@ -135,7 +122,7 @@ describe('ResumeScreeningSchema Validation', () => {
   });
 
   /**
-   * Test 4: Minimum screening steps enforcement
+   * Test: Minimum screening steps enforcement
    */
   it('should require minimum 3 screening steps for SGR compliance', () => {
     const insufficientSteps = {
@@ -143,8 +130,8 @@ describe('ResumeScreeningSchema Validation', () => {
       job_id: 'JOB-001',
       overall_fit: 'strong_match',
       screening_steps: [
-        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has skills' },
-        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: 'Has experience' }
+        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has skills', gap_identified: null },
+        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: 'Has experience', gap_identified: null }
         // Only 2 steps - should fail (min is 3)
       ],
       skills_analysis: { technical_skills: [], soft_skills: [], certifications: [], required_skills_matched: [], missing_required_skills: [] },
@@ -161,7 +148,7 @@ describe('ResumeScreeningSchema Validation', () => {
   });
 
   /**
-   * Test 5: Missing required field detection
+   * Test: Missing required field detection
    */
   it('should reject data with missing required fields', () => {
     const missingFields = {
@@ -176,65 +163,6 @@ describe('ResumeScreeningSchema Validation', () => {
 });
 
 // ============================================================
-// LLM AGENT INTEGRATION TESTS
-// ============================================================
-
-describe('LLMAgent Validation Handling', () => {
-  beforeEach(() => {
-    resetSimulationState();
-  });
-
-  /**
-   * Test 6: Successful validation flow
-   */
-  it('should successfully parse valid LLM response', async () => {
-    setCandidateType('strong_match');
-    const result = await runResumeScreening(strongMatchCandidate, defaultJob);
-
-    expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    expect(result.data?.candidate_id).toBe('CAND-001');
-    expect(result.data?.screening_steps.length).toBeGreaterThanOrEqual(3);
-  });
-
-  /**
-   * Test 7: Catch ZodError on malformed LLM response
-   */
-  it('should catch and report ZodError for invalid LLM response', async () => {
-    const result = await runResumeScreening(strongMatchCandidate, defaultJob, true);
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
-    expect(result.error?.type).toBe('validation_error');
-    expect(result.error?.details).toBeDefined();
-    expect(Array.isArray(result.error?.details)).toBe(true);
-
-    const issues = result.error?.details || [];
-    expect(issues.length).toBeGreaterThan(0);
-    expect(result.rawResponse).toBeDefined();
-  });
-
-  /**
-   * Test 8: Different candidate types produce appropriate results
-   */
-  it('should produce different results for different candidate types', async () => {
-    setCandidateType('strong_match');
-    const strongResult = await runResumeScreening(strongMatchCandidate, defaultJob);
-
-    setCandidateType('potential_fit');
-    const potentialResult = await runResumeScreening(potentialFitCandidate, defaultJob);
-
-    expect(strongResult.success).toBe(true);
-    expect(potentialResult.success).toBe(true);
-
-    expect(strongResult.data?.overall_fit).toBe('strong_match');
-    expect(potentialResult.data?.overall_fit).toBe('potential_fit');
-
-    expect(strongResult.data?.fit_score).toBeGreaterThan(potentialResult.data?.fit_score || 0);
-  });
-});
-
-// ============================================================
 // AGENT FLOW TESTS - Function Calling Validation
 // ============================================================
 
@@ -244,12 +172,12 @@ describe('AgentFlow Function Calling Validation', () => {
     job_id: 'JOB-001',
     overall_fit: 'strong_match',
     screening_steps: [
-      { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has all required skills' },
-      { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: '7 years experience' },
-      { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'CS degree' }
+      { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has all required skills', gap_identified: null },
+      { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: '7 years experience', gap_identified: null },
+      { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'CS degree', gap_identified: null }
     ],
     skills_analysis: {
-      technical_skills: [{ skill_name: 'TypeScript', proficiency_level: 'expert', evidence_source: 'Resume' }],
+      technical_skills: [{ skill_name: 'TypeScript', proficiency_level: 'expert', years_experience: 5, evidence_source: 'Resume' }],
       soft_skills: ['Leadership'],
       certifications: [],
       required_skills_matched: ['TypeScript'],
@@ -265,7 +193,7 @@ describe('AgentFlow Function Calling Validation', () => {
   };
 
   /**
-   * Test 9: Valid function call execution
+   * Test: Valid function call execution
    */
   it('should execute function with valid arguments', async () => {
     const result = await executeAgentFlow(validScreening, false);
@@ -275,7 +203,7 @@ describe('AgentFlow Function Calling Validation', () => {
   });
 
   /**
-   * Test 10: Invalid function arguments are caught
+   * Test: Invalid function arguments are caught
    */
   it('should catch validation errors for invalid function arguments', async () => {
     const result = await executeAgentFlow(validScreening, true);
@@ -287,142 +215,12 @@ describe('AgentFlow Function Calling Validation', () => {
 });
 
 // ============================================================
-// EVALS FRAMEWORK COMMENT BLOCK
-// ============================================================
-
-/**
- * ============================================================
- * LLM EVALUATION (EVALS) SYSTEM DESIGN FOR RESUME SCREENING
- * ============================================================
- *
- * EVAL TYPE 1: is-json (Deterministic Check)
- * -------------------------------------------
- * Purpose: Verify the LLM output is valid JSON.
- *
- * promptfoo configuration example:
- * ```yaml
- * tests:
- *   - vars:
- *       resume: "Alex Chen - Senior Software Engineer..."
- *       job: "Senior Software Engineer position..."
- *     assert:
- *       - type: is-json
- * ```
- *
- * EVAL TYPE 2: schema-conformance (SGR Validation)
- * -------------------------------------------------
- * Purpose: Verify all mandatory SGR fields are present and valid.
- *
- * ```yaml
- * tests:
- *   - assert:
- *       - type: javascript
- *         value: |
- *           const { ResumeScreeningSchema } = require('./SGRSchema');
- *           try {
- *             const parsed = JSON.parse(output);
- *             ResumeScreeningSchema.parse(parsed);
- *             // SGR-specific checks:
- *             if (parsed.screening_steps.length < 3) {
- *               return { pass: false, reason: 'Insufficient screening steps' };
- *             }
- *             // Verify each step has evidence
- *             const missingEvidence = parsed.screening_steps.filter(s => !s.evidence);
- *             if (missingEvidence.length > 0) {
- *               return { pass: false, reason: 'Missing evidence in screening steps' };
- *             }
- *             return { pass: true };
- *           } catch (e) {
- *             return { pass: false, reason: e.message };
- *           }
- * ```
- *
- * EVAL TYPE 3: screening-accuracy (Business Logic)
- * ------------------------------------------------
- * Purpose: Verify screening decisions align with resume content.
- *
- * ```yaml
- * tests:
- *   - vars:
- *       resume: "10 years TypeScript, AWS certified, Stanford CS..."
- *     assert:
- *       - type: javascript
- *         value: |
- *           const parsed = JSON.parse(output);
- *           // Qualified candidate should not be rejected
- *           if (parsed.overall_fit === 'not_qualified') {
- *             return { pass: false, reason: 'Qualified candidate incorrectly rejected' };
- *           }
- *           // Strong candidates should have high scores
- *           if (parsed.overall_fit === 'strong_match' && parsed.fit_score < 80) {
- *             return { pass: false, reason: 'Strong match should have score >= 80' };
- *           }
- *           return { pass: true };
- * ```
- *
- * ============================================================
- */
-
-// ============================================================
-// RETRY LOGIC COMMENT BLOCK
-// ============================================================
-
-/**
- * ============================================================
- * RETRY LOGIC FOR VALIDATION FAILURES
- * ============================================================
- *
- * Example retry implementation for resume screening:
- *
- * ```typescript
- * const MAX_RETRIES = 3;
- *
- * async function screenWithRetry(resume: Resume, job: JobDescription): Promise<LLMAgentResult> {
- *   let lastError: string | undefined;
- *
- *   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
- *     console.log(`Screening attempt ${attempt}/${MAX_RETRIES}`);
- *
- *     const result = await runResumeScreening(resume, job);
- *
- *     if (result.success) {
- *       console.log(`Success on attempt ${attempt}`);
- *       return result;
- *     }
- *
- *     lastError = result.error?.message;
- *
- *     if (result.error?.details) {
- *       const fieldErrors = result.error.details
- *         .map(issue => `- ${issue.path.join('.')}: ${issue.message}`)
- *         .join('\n');
- *       lastError += `\n\nSpecific errors:\n${fieldErrors}`;
- *     }
- *
- *     console.log(`Attempt ${attempt} failed, will retry...`);
- *   }
- *
- *   return {
- *     success: false,
- *     error: {
- *       type: 'validation_error',
- *       message: `Failed after ${MAX_RETRIES} attempts. Last error: ${lastError}`
- *     },
- *     rawResponse: ''
- *   };
- * }
- * ```
- *
- * ============================================================
- */
-
-// ============================================================
-// ADDITIONAL UTILITY TESTS
+// SCHEMA UTILITY TESTS
 // ============================================================
 
 describe('Schema Utility Functions', () => {
   /**
-   * Test 11: Verify CandidateFit enum values
+   * Test: Verify CandidateFit enum values
    */
   it('should only accept defined enum values for overall_fit', () => {
     const validValues = ['strong_match', 'qualified', 'potential_fit', 'not_qualified'];
@@ -436,7 +234,7 @@ describe('Schema Utility Functions', () => {
   });
 
   /**
-   * Test 12: Verify ScreeningStep schema validation
+   * Test: Verify ScreeningStep schema validation
    */
   it('should validate individual screening steps correctly', () => {
     const validStep = {
@@ -469,7 +267,7 @@ describe('Schema Utility Functions', () => {
   });
 
   /**
-   * Test 13: UpdateATSArgs schema validation
+   * Test: UpdateATSArgs schema validation
    */
   it('should validate UpdateATSArgs correctly', () => {
     const validArgs = {
@@ -496,7 +294,7 @@ describe('Schema Utility Functions', () => {
   });
 
   /**
-   * Test 14: FlagForReviewArgs schema validation
+   * Test: FlagForReviewArgs schema validation
    */
   it('should validate FlagForReviewArgs correctly', () => {
     const validArgs = {
@@ -524,7 +322,7 @@ describe('Schema Utility Functions', () => {
   });
 
   /**
-   * Test 15: ExtractedSkill schema validation
+   * Test: ExtractedSkill schema validation
    */
   it('should validate ExtractedSkill correctly', () => {
     const validSkill = {

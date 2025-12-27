@@ -9,15 +9,11 @@
 // ============================================================================
 
 export const openaiConfig = {
-  // API key loaded from environment variable (required for real API)
+  // API key loaded from environment variable (required)
   apiKey: process.env.OPENAI_API_KEY || '',
 
-  // Whether to use real API or simulation
-  // Set to true to use real OpenAI API, false for simulation
-  useRealAPI: process.env.USE_REAL_API === 'true',
-
   // Model override (optional - defaults to primaryModel in modelConfig)
-  // Use this to switch to cheaper models: OPENAI_MODEL=gpt-4o-mini
+  // Set via: OPENAI_MODEL=gpt-4o-mini
   model: process.env.OPENAI_MODEL || undefined,
 
   // Base URL (optional, for proxies or Azure OpenAI)
@@ -160,20 +156,6 @@ export const enums = {
     'high',
     'urgent'
   ] as const
-} as const;
-
-// ============================================================================
-// Simulation Configuration
-// ============================================================================
-
-export const simulationConfig = {
-  // Token counts for simulated responses
-  tokenCounts: {
-    success: 350,
-    failure: 150
-  },
-  // Simulated model version
-  modelVersion: 'simulated-resume-screener-v1'
 } as const;
 
 // ============================================================================
