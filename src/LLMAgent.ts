@@ -270,28 +270,3 @@ Be thorough and cite specific details from the resume as evidence.`
   }
 }
 
-/**
- * Demonstration of schema generation
- * Shows the JSON Schema that would be sent to an LLM API
- */
-export function demonstrateSchemaGeneration(): void {
-  console.log('\n=== Schema-Guided Reasoning: Schema Generation Demo ===\n');
-
-  const jsonSchema = zodToJsonSchemaString(
-    ResumeScreeningSchema,
-    'ResumeScreening'
-  );
-
-  console.log('The following JSON Schema is generated from the Zod definition:');
-  console.log('This schema would be sent to the LLM API with strict=true\n');
-  console.log(jsonSchema);
-
-  console.log('\n=== How This Enables SGR ===');
-  console.log('1. The schema REQUIRES screening_steps array (min 3 items)');
-  console.log('2. Each step MUST evaluate a specific category with evidence');
-  console.log('3. This forces the LLM to systematically review the resume');
-  console.log('4. The overall_fit enum prevents vague assessments');
-  console.log('5. The fit_score constraint (0-100) ensures quantifiable output');
-  console.log('6. recommended_action enum enforces clear next steps');
-  console.log('============================================\n');
-}
