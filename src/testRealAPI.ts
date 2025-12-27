@@ -2,13 +2,16 @@
  * testRealAPI.ts - Test Resume Screening with Real OpenAI API
  *
  * Run with:
- *   export OPENAI_API_KEY=your-api-key
- *   export USE_REAL_API=true
  *   npm run dev:real
  *
- * Or directly:
- *   OPENAI_API_KEY=your-key USE_REAL_API=true npx tsx src/testRealAPI.ts
+ * Make sure you have a .env file with:
+ *   OPENAI_API_KEY=your-api-key
+ *   USE_REAL_API=true
+ *   OPENAI_MODEL=gpt-4o-mini  (optional, defaults to gpt-4o)
  */
+
+// Load environment variables from .env file
+import 'dotenv/config';
 
 import {
   runResumeScreening,

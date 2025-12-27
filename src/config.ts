@@ -9,12 +9,16 @@
 // ============================================================================
 
 export const openaiConfig = {
-  // API key loaded from environment variable
+  // API key loaded from environment variable (required for real API)
   apiKey: process.env.OPENAI_API_KEY || '',
 
   // Whether to use real API or simulation
   // Set to true to use real OpenAI API, false for simulation
   useRealAPI: process.env.USE_REAL_API === 'true',
+
+  // Model override (optional - defaults to primaryModel in modelConfig)
+  // Use this to switch to cheaper models: OPENAI_MODEL=gpt-4o-mini
+  model: process.env.OPENAI_MODEL || undefined,
 
   // Base URL (optional, for proxies or Azure OpenAI)
   baseURL: process.env.OPENAI_BASE_URL || undefined

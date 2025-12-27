@@ -93,8 +93,8 @@ export const ScreeningStepSchema = z.object({
     .describe('Specific evidence from the resume supporting this conclusion'),
 
   gap_identified: z.string()
-    .optional()
-    .describe('If requirement not met, what gap was identified')
+    .nullable()
+    .describe('If requirement not met, what gap was identified (null if requirement met)')
 });
 
 export type ScreeningStep = z.infer<typeof ScreeningStepSchema>;
@@ -116,8 +116,8 @@ export const ExtractedSkillSchema = z.object({
 
   years_experience: z.number()
     .min(0)
-    .optional()
-    .describe('Estimated years of experience with this skill'),
+    .nullable()
+    .describe('Estimated years of experience with this skill (null if unknown)'),
 
   evidence_source: z.string()
     .describe('Where in the resume this skill was demonstrated')
@@ -221,8 +221,8 @@ export const EducationEntrySchema = z.object({
 
   graduation_year: z.number()
     .int()
-    .optional()
-    .describe('Year of graduation'),
+    .nullable()
+    .describe('Year of graduation (null if not provided or still in progress)'),
 
   relevance: RelevanceEnum
     .describe('How relevant this education is to the role')
@@ -349,19 +349,22 @@ export const exampleResumeScreening: ResumeScreening = {
       step_number: 1,
       evaluation_category: 'technical_skills',
       requirement_met: true,
-      evidence: 'Candidate has 7 years of TypeScript and Python experience, with AWS and Kubernetes certifications. Led microservices migration at TechCorp.'
+      evidence: 'Candidate has 7 years of TypeScript and Python experience, with AWS and Kubernetes certifications. Led microservices migration at TechCorp.',
+      gap_identified: null
     },
     {
       step_number: 2,
       evaluation_category: 'experience_level',
       requirement_met: true,
-      evidence: 'Total of 7 years professional experience, including 3 years as Senior Engineer with team leadership responsibilities.'
+      evidence: 'Total of 7 years professional experience, including 3 years as Senior Engineer with team leadership responsibilities.',
+      gap_identified: null
     },
     {
       step_number: 3,
       evaluation_category: 'education',
       requirement_met: true,
-      evidence: 'B.S. Computer Science from UC Berkeley (GPA 3.7), meeting the degree requirement.'
+      evidence: 'B.S. Computer Science from UC Berkeley (GPA 3.7), meeting the degree requirement.',
+      gap_identified: null
     }
   ],
 

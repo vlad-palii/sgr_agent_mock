@@ -47,12 +47,12 @@ describe('ResumeScreeningSchema Validation', () => {
       job_id: 'JOB-001',
       overall_fit: 'strong_match',
       screening_steps: [
-        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has all required skills including TypeScript and Python' },
-        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: '7 years of relevant experience in software engineering' },
-        { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'BS Computer Science from accredited university' }
+        { step_number: 1, evaluation_category: 'technical_skills', requirement_met: true, evidence: 'Has all required skills including TypeScript and Python', gap_identified: null },
+        { step_number: 2, evaluation_category: 'experience_level', requirement_met: true, evidence: '7 years of relevant experience in software engineering', gap_identified: null },
+        { step_number: 3, evaluation_category: 'education', requirement_met: true, evidence: 'BS Computer Science from accredited university', gap_identified: null }
       ],
       skills_analysis: {
-        technical_skills: [{ skill_name: 'TypeScript', proficiency_level: 'expert', evidence_source: 'Work history' }],
+        technical_skills: [{ skill_name: 'TypeScript', proficiency_level: 'expert', years_experience: 5, evidence_source: 'Work history' }],
         soft_skills: ['Leadership'],
         certifications: [],
         required_skills_matched: ['TypeScript'],
@@ -443,7 +443,8 @@ describe('Schema Utility Functions', () => {
       step_number: 1,
       evaluation_category: 'technical_skills',
       requirement_met: true,
-      evidence: 'Candidate has demonstrated expertise in TypeScript and Python'
+      evidence: 'Candidate has demonstrated expertise in TypeScript and Python',
+      gap_identified: null
     };
 
     expect(() => ScreeningStepSchema.parse(validStep)).not.toThrow();
@@ -453,7 +454,8 @@ describe('Schema Utility Functions', () => {
       step_number: 1,
       evaluation_category: 'technical_skills',
       requirement_met: true,
-      evidence: 'Short' // Less than 10 chars
+      evidence: 'Short', // Less than 10 chars
+      gap_identified: null
     })).toThrow(ZodError);
 
     // Invalid category
@@ -461,7 +463,8 @@ describe('Schema Utility Functions', () => {
       step_number: 1,
       evaluation_category: 'invalid_category',
       requirement_met: true,
-      evidence: 'Valid evidence here'
+      evidence: 'Valid evidence here',
+      gap_identified: null
     })).toThrow(ZodError);
   });
 

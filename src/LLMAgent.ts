@@ -120,19 +120,22 @@ function generateScreeningResult(candidateId: string, jobId: string): ResumeScre
             step_number: 1,
             evaluation_category: 'technical_skills',
             requirement_met: true,
-            evidence: 'Candidate has 7 years of TypeScript and Python experience, with AWS and Kubernetes certifications. Led microservices migration at TechCorp.'
+            evidence: 'Candidate has 7 years of TypeScript and Python experience, with AWS and Kubernetes certifications. Led microservices migration at TechCorp.',
+            gap_identified: null
           },
           {
             step_number: 2,
             evaluation_category: 'experience_level',
             requirement_met: true,
-            evidence: 'Total of 7 years professional experience, including 3 years as Senior Engineer with team leadership responsibilities. Exceeds the 5+ years requirement.'
+            evidence: 'Total of 7 years professional experience, including 3 years as Senior Engineer with team leadership responsibilities. Exceeds the 5+ years requirement.',
+            gap_identified: null
           },
           {
             step_number: 3,
             evaluation_category: 'education',
             requirement_met: true,
-            evidence: 'B.S. Computer Science from UC Berkeley (GPA 3.7), meeting the degree requirement.'
+            evidence: 'B.S. Computer Science from UC Berkeley (GPA 3.7), meeting the degree requirement.',
+            gap_identified: null
           }
         ],
         skills_analysis: {
@@ -291,9 +294,9 @@ function generateScreeningResult(candidateId: string, jobId: string): ResumeScre
         ],
         skills_analysis: {
           technical_skills: [
-            { skill_name: 'HTML', proficiency_level: 'beginner', evidence_source: 'Personal portfolio' },
-            { skill_name: 'CSS', proficiency_level: 'beginner', evidence_source: 'Personal portfolio' },
-            { skill_name: 'JavaScript', proficiency_level: 'beginner', evidence_source: 'Listed as "basic"' }
+            { skill_name: 'HTML', proficiency_level: 'beginner', years_experience: null, evidence_source: 'Personal portfolio' },
+            { skill_name: 'CSS', proficiency_level: 'beginner', years_experience: null, evidence_source: 'Personal portfolio' },
+            { skill_name: 'JavaScript', proficiency_level: 'beginner', years_experience: null, evidence_source: 'Listed as "basic"' }
           ],
           soft_skills: ['Customer Service', 'Communication'],
           certifications: [],
@@ -432,21 +435,25 @@ export function simulateLLMCall(
 export async function callOpenAIWithStructuredOutput(
   prompt: string
 ): Promise<LLMResponse> {
+  const modelToUse = openaiConfig.model || modelConfig.primaryModel;
   console.log('[OpenAI API] Making real API call...');
-  console.log(`[OpenAI API] Model: ${modelConfig.primaryModel}`);
+  console.log(`[OpenAI API] Model: ${modelToUse}`);
   console.log(`[OpenAI API] Prompt length: ${prompt.length} chars`);
 
   try {
     const client = getOpenAIClient();
 
     // Build the JSON schema for Structured Outputs
+    // Use $refStrategy: 'none' to inline all definitions (OpenAI requires flat schema)
     const jsonSchema = zodToJsonSchema(ResumeScreeningSchema, {
-      name: 'ResumeScreening',
+      $refStrategy: 'none',
       errorMessages: true
     });
 
+    console.log(`[OpenAI API] Using model: ${modelToUse}`);
+
     const response = await client.chat.completions.create({
-      model: modelConfig.primaryModel,
+      model: modelToUse,
       max_tokens: modelConfig.maxTokens,
       temperature: modelConfig.temperature,
       messages: [
